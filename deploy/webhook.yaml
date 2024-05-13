@@ -1,0 +1,85 @@
+# kustomization.yaml 的内容已被注释，因为我们不使用 kustomize
+# apiVersion: kustomize.config.k8s.io/v1beta1
+# kind: Kustomization
+# resources:
+#   - manifests.yaml
+# commonLabels:
+#   control-plane: kubeflow-training-operator
+# patches:
+#   - path: patch.yaml
+#     target:
+#       group: admissionregistration.k8s.io
+#       version: v1
+#       kind: ValidatingWebhookConfiguration
+# configurations:
+#   - kustomizeconfig.yaml
+
+# ---
+# kustomizeconfig.yaml 的内容，如果不使用 kustomize，此部分可以忽略
+# namespace:
+#   - kind: ValidatingWebhookConfiguration
+#     group: admissionregistration.k8s.io
+#     path: webhooks/clientConfig/service/namespace
+#     create: true
+# varReference:
+#   - path: metadata/annotations
+
+---
+# manifests.yaml 的内容
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: validating-webhook-configuration
+webhooks:
+  # mpioperator 相关的 webhook 配置
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: webhook-service
+        namespace: system
+        path: /validate-kubeflow-org-v1-mpioperator
+    failurePolicy: Fail
+    name: validator.mpioperator.training-operator.kubeflow.org
+    rules:
+      - apiGroups:
+          - kubeflow.org
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - mpijobs
+    sideEffects: None
+  # 其他框架的 webhook 配置已被注释
+  # - admissionReviewVersions:
+  #     - v1
+  #   clientConfig:
+  #     service:
+  #       name: webhook-service
+  #       namespace: system
+  #       path: /validate-kubeflow-org-v1-otherframework
+  #   failurePolicy: Fail
+  #   name: validator.otherframework.training-operator.kubeflow.org
+  #   rules:
+  #     - apiGroups:
+  #         - kubeflow.org
+  #       apiVersions:
+  #         - v1
+  #       operations:
+  #         - CREATE
+  #         - UPDATE
+  #       resources:
+  #         - otherframeworkjobs
+  #   sideEffects: None
+
+# ---
+# patch.yaml 的内容，如果不使用 kustomize，此部分可以直接应用到 manifests.yaml 中
+# - op: replace
+#   path: /webhooks/0/clientConfig/service/name
+#   value: mpioperator-webhook-service
+# 其他框架的 patch 操作已被注释
+# - op: replace
+#   path: /webhooks/1/clientConfig/service/name
+#   value: otherframework-webhook-service
