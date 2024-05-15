@@ -5,6 +5,7 @@ metadata:
   labels:
     app: training-operator
   name: training-operator
+  namespace: kubeflow
 
 ---
 # role.yaml
@@ -305,3 +306,4 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: training-operator
+  namespace: kubeflow
