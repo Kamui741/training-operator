@@ -5,6 +5,7 @@ metadata:
   name: training-operator
   labels:
     control-plane: kubeflow-training-operator
+  namespace: kubeflow
 spec:
   selector:
     matchLabels:
@@ -87,6 +88,7 @@ metadata:
   labels:
     app: training-operator
   name: training-operator
+  namespace: kubeflow
 spec:
   ports:
     - name: monitoring-port

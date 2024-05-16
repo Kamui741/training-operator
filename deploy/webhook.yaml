@@ -29,111 +29,109 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: validating-webhook-configuration
+  name: validator.training-operator.kubeflow.org
 webhooks:
-  # mpioperator 相关的 webhook 配置
-  - admissionReviewVersions:
-      - v1
-    clientConfig:
-      service:
-        name: webhook-service
-        namespace: system
-        path: /validate-kubeflow-org-v1-mpioperator
-    failurePolicy: Fail
-    name: validator.mpioperator.training-operator.kubeflow.org
-    rules:
-      - apiGroups:
-          - kubeflow.org
-        apiVersions:
-          - v1
-        operations:
-          - CREATE
-          - UPDATE
-        resources:
-          - mpijobs
-    sideEffects: None
-  # 其他框架的 webhook 配置已被注释
-#  - admissionReviewVersions:
-#   - v1
-#   clientConfig:
-#     service:
-#       name: webhook-service
-#       namespace: system
-#       path: /validate-kubeflow-org-v1-paddlejob
-#   failurePolicy: Fail
-#   name: validator.paddlejob.training-operator.kubeflow.org
-#   rules:
-#   - apiGroups:
-#     - kubeflow.org
-#     apiVersions:
-#     - v1
-#     operations:
-#     - CREATE
-#     - UPDATE
-#     resources:
-#     - paddlejobs
-#   sideEffects: None
-# - admissionReviewVersions:
-#   - v1
-#   clientConfig:
-#     service:
-#       name: webhook-service
-#       namespace: system
-#       path: /validate-kubeflow-org-v1-pytorchjob
-#   failurePolicy: Fail
-#   name: validator.pytorchjob.training-operator.kubeflow.org
-#   rules:
-#   - apiGroups:
-#     - kubeflow.org
-#     apiVersions:
-#     - v1
-#     operations:
-#     - CREATE
-#     - UPDATE
-#     resources:
-#     - pytorchjobs
-#   sideEffects: None
-# - admissionReviewVersions:
-#   - v1
-#   clientConfig:
-#     service:
-#       name: webhook-service
-#       namespace: system
-#       path: /validate-kubeflow-org-v1-tfjob
-#   failurePolicy: Fail
-#   name: validator.tfjob.training-operator.kubeflow.org
-#   rules:
-#   - apiGroups:
-#     - kubeflow.org
-#     apiVersions:
-#     - v1
-#     operations:
-#     - CREATE
-#     - UPDATE
-#     resources:
-#     - tfjobs
-#   sideEffects: None
-# - admissionReviewVersions:
-#   - v1
-#   clientConfig:
-#     service:
-#       name: webhook-service
-#       namespace: system
-#       path: /validate-kubeflow-org-v1-xgboostjob
-#   failurePolicy: Fail
-#   name: validator.xgboostjob.training-operator.kubeflow.org
-#   rules:
-#   - apiGroups:
-#     - kubeflow.org
-#     apiVersions:
-#     - v1
-#     operations:
-#     - CREATE
-#     - UPDATE
-#     resources:
-#     - xgboostjobs
-#   sideEffects: None
-
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: training-operator
+      namespace: system
+      path: /validate-kubeflow-org-v1-mxjob
+  failurePolicy: Fail
+  name: validator.mxjob.training-operator.kubeflow.org
+  rules:
+  - apiGroups:
+    - kubeflow.org
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    - DELETE
+    resources:
+    - mxjobs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: training-operator
+      namespace: system
+      path: /validate-kubeflow-org-v1-paddlejob
+  failurePolicy: Fail
+  name: validator.paddlejob.training-operator.kubeflow.org
+  rules:
+  - apiGroups:
+    - kubeflow.org
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - paddlejobs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: training-operator
+      namespace: system
+      path: /validate-kubeflow-org-v1-pytorchjob
+  failurePolicy: Fail
+  name: validator.pytorchjob.training-operator.kubeflow.org
+  rules:
+  - apiGroups:
+    - kubeflow.org
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pytorchjobs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: training-operator
+      namespace: system
+      path: /validate-kubeflow-org-v1-tfjob
+  failurePolicy: Fail
+  name: validator.tfjob.training-operator.kubeflow.org
+  rules:
+  - apiGroups:
+    - kubeflow.org
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - tfjobs
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: training-operator
+      namespace: system
+      path: /validate-kubeflow-org-v1-xgboostjob
+  failurePolicy: Fail
+  name: validator.xgboostjob.training-operator.kubeflow.org
+  rules:
+  - apiGroups:
+    - kubeflow.org
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - xgboostjobs
+  sideEffects: None
 
 # ---
 # patch.yaml 的内容，如果不使用 kustomize，此部分可以直接应用到 manifests.yaml 中
