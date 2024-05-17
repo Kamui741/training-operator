@@ -1,0 +1,21 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: training-operator-init
+  labels:
+    app: training-operator
+  namespace: kubeflow
+spec:
+  template:
+    metadata:
+      labels:
+        app: training-operator
+    spec:
+      serviceAccountName: training-operator
+      containers:
+      - name: init
+        image: kmu1/training-operator-gencerts:latest
+        imagePullPolicy: IfNotPresent
+        command: ["/usr/bin/gencerts.sh","-p","-n","kubeflow"]
+      restartPolicy: OnFailure
+  backoffLimit: 4

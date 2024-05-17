@@ -63,6 +63,7 @@ rules:
   - list
   - update
   - watch
+  - create # 新增权限
 - apiGroups:
   - ""
   resources:
