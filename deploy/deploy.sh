@@ -8,7 +8,7 @@
 ###
 echo "开始部署..."
 kubectl create -f namespace.yaml
-kubectl create -f rbac.yaml
+kubectl create -f rbac.yaml #顺序
 kubectl create -f init.yaml
 kubectl create -f kubeflow.org_tfjobs.yaml
 kubectl create -f kubeflow.org_mxjobs.yaml
