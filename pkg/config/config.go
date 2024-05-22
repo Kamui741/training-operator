@@ -14,11 +14,15 @@
 
 package config
 
+import (
+	"os"
+)
+
 // Config is the global configuration for the training operator.
 var Config struct {
 	PyTorchInitContainerTemplateFile string
 	PyTorchInitContainerImage        string
-	MPIKubectlDeliveryImage          string
+	// MPIKubectlDeliveryImage          string
 	PyTorchInitContainerMaxTries     int
 }
 
@@ -32,5 +36,15 @@ const (
 	// PyTorchInitContainerMaxTriesDefault is the default number of tries for the pytorch init container.
 	PyTorchInitContainerMaxTriesDefault = 100
 	// MPIKubectlDeliveryImageDefault is the default image for launcher pod in MPIJob init container.
-	MPIKubectlDeliveryImageDefault = "kubeflow/kubectl-delivery:latest"
+	MPIKubectlDeliveryImageEnv = "MPI_KUBECTL_DELIVERY_IMAGE"
+    MPIKubectlDeliveryImageDefault = "kubeflow/kubectl-delivery:latest"
 )
+
+var MPIKubectlDeliveryImage = getEnv(MPIKubectlDeliveryImageEnv, MPIKubectlDeliveryImageDefault)
+
+func getEnv(key, defaultValue string) string {
+    if value,exists := os.LookupEnv(key); exists {
+        return value
+    }
+	return defaultValue
+}

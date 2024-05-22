@@ -4,18 +4,19 @@ metadata:
   name: training-operator-init
   labels:
     app: training-operator
-  namespace: kubeflow
+  namespace: hxz-cabt
 spec:
+  backoffLimit: 4
   template:
     metadata:
       labels:
         app: training-operator
     spec:
-      serviceAccountName: training-operator
+      serviceAccount: training-operator ##
       containers:
-      - name: init
+      - name: gencerts
         image: kmu1/training-operator-gencerts:latest
         imagePullPolicy: IfNotPresent
         command: ["/usr/bin/gencerts.sh","-p","-n","kubeflow"]
-      restartPolicy: OnFailure
-  backoffLimit: 4
+
+

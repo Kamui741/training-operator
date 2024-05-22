@@ -104,7 +104,7 @@ func main() {
 
 	// MPI related flags
 	flag.StringVar(&config.Config.MPIKubectlDeliveryImage, "mpi-kubectl-delivery-image",
-		config.MPIKubectlDeliveryImageDefault, "The image for mpi launcher init container")
+		config.MPIKubectlDeliveryImage, "The image for mpi launcher init container")
 
 	// Cert generation flags
 	flag.IntVar(&webhookServerPort, "webhook-server-port", 9443, "Endpoint port for the webhook server.")
