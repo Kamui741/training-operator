@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: training-operator-config
-  namespace: hxz-cabt
-  labels:
-    app: training-operator
-data:
-  MPI_KUBECTL_DELIVERY_IMAGE: "kmu1/kubeclt-delivery:latest"

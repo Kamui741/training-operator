@@ -19,7 +19,7 @@ EOF
 
 function parse_arguments {
   # 默认的资源名称变量更新为适用于trainingoperator
-  RESOURCE_NAME="training-operator-webhook-cert" # 新的默认资源名称
+  RESOURCE_NAME="training-operator" # 新的默认资源名称
   while [[ $# -gt 0 ]]
   do
     case "$1" in

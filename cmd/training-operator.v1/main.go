@@ -103,8 +103,9 @@ func main() {
 		config.PyTorchInitContainerMaxTriesDefault, "The number of tries for the pytorch init container")
 
 	// MPI related flags
+	//配合 config.go 修改
 	flag.StringVar(&config.Config.MPIKubectlDeliveryImage, "mpi-kubectl-delivery-image",
-		config.MPIKubectlDeliveryImage, "The image for mpi launcher init container")
+		config.Config.MPIKubectlDeliveryImage, "The image for mpi launcher init container")
 
 	// Cert generation flags
 	flag.IntVar(&webhookServerPort, "webhook-server-port", 9443, "Endpoint port for the webhook server.")

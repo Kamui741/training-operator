@@ -4,7 +4,7 @@ kind: ClusterRoleBinding
 metadata:
   labels:
     app: training-operator
-  name: training-operator-rolebinding
+  name: training-operator
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole

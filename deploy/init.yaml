@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: training-operator-init
+  name: training-operator
   labels:
     app: training-operator
   namespace: hxz-cabt
@@ -12,11 +12,12 @@ spec:
       labels:
         app: training-operator
     spec:
-      serviceAccount: training-operator ##
+      serviceAccountName: training-operator ##
+      restartPolicy: OnFailure
       containers:
       - name: gencerts
         image: kmu1/training-operator-gencerts:latest
         imagePullPolicy: IfNotPresent
-        command: ["/usr/bin/gencerts.sh","-p","-n","kubeflow"]
+        command: ["/usr/bin/gencerts.sh","-p","-n","hxz-cabt"]
 
 

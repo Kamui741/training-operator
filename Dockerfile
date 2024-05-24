@@ -1,6 +1,4 @@
 # Build the manager binary
-
-##training-operator 根目录执行
 FROM golang:1.22 as builder
 
 WORKDIR /workspace

@@ -22,7 +22,7 @@ import (
 var Config struct {
 	PyTorchInitContainerTemplateFile string
 	PyTorchInitContainerImage        string
-	// MPIKubectlDeliveryImage          string
+	MPIKubectlDeliveryImage          string
 	PyTorchInitContainerMaxTries     int
 }
 
@@ -40,7 +40,12 @@ const (
     MPIKubectlDeliveryImageDefault = "kubeflow/kubectl-delivery:latest"
 )
 
-var MPIKubectlDeliveryImage = getEnv(MPIKubectlDeliveryImageEnv, MPIKubectlDeliveryImageDefault)
+//新增读取环境变量的功能
+func init() {
+	// 初始化读取环境变量的功能
+	Config.MPIKubectlDeliveryImage = getEnv(MPIKubectlDeliveryImageEnv, MPIKubectlDeliveryImageDefault)
+}
+
 
 func getEnv(key, defaultValue string) string {
     if value,exists := os.LookupEnv(key); exists {

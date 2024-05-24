@@ -29,7 +29,7 @@
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: validator.training-operator.kubeflow.org
+  name: training-operator
 webhooks:
 - admissionReviewVersions:
   - v1
