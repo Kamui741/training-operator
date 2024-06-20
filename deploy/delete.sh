@@ -16,7 +16,7 @@ kubectl delete -f crd_pytorchjobs.yaml
 kubectl delete -f crd_mxjobs.yaml
 kubectl delete -f crd_tfjobs.yaml
 kubectl delete -f init.yaml
-kubectl delete -f cluster-role-binding.yaml
+kubectl delete -f role-binding.yaml
 kubectl delete -f role.yaml
 kubectl delete -f service-account.yaml
 kubectl delete -f namespace.yaml

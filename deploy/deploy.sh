@@ -10,7 +10,7 @@ echo "开始部署..."
 kubectl create -f namespace.yaml
 kubectl create -f service-account.yaml #顺序
 kubectl create -f role.yaml
-kubectl create -f cluster-role-binding.yaml
+kubectl create -f role-binding.yaml
 kubectl create -f init.yaml
 kubectl create -f crd_tfjobs.yaml
 kubectl create -f crd_mxjobs.yaml
