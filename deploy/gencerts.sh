@@ -19,7 +19,7 @@ EOF
 
 function parse_arguments {
   # 默认的资源名称变量更新为适用于trainingoperator
-  RESOURCE_NAME="training-operator" # 新的默认资源名称
+  RESOURCE_NAME="training-operator-webhook-cert" # 新的默认资源名称
   while [[ $# -gt 0 ]]
   do
     case "$1" in
@@ -80,7 +80,7 @@ function parse_arguments {
 # Set the namespace to "training-operator" by default if not provided.
 # Set the webhook service name to "training-webhook" by default if not provided.
 IN_POD=false
-SERVICE="webhook-service" # 更新服务名称
+SERVICE="" # 更新服务名称
 NAMESPACE="hxz-cabt" # 更新命名空间
 parse_arguments "$@"
 

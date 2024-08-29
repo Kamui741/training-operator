@@ -1,42 +1,18 @@
-# kustomization.yaml 的内容已被注释，因为我们不使用 kustomize
-# apiVersion: kustomize.config.k8s.io/v1beta1
-# kind: Kustomization
-# resources:
-#   - manifests.yaml
-# commonLabels:
-#   control-plane: kubeflow-training-operator
-# patches:
-#   - path: patch.yaml
-#     target:
-#       group: admissionregistration.k8s.io
-#       version: v1
-#       kind: ValidatingWebhookConfiguration
-# configurations:
-#   - kustomizeconfig.yaml
 
-# ---
-# kustomizeconfig.yaml 的内容，如果不使用 kustomize，此部分可以忽略
-# namespace:
-#   - kind: ValidatingWebhookConfiguration
-#     group: admissionregistration.k8s.io
-#     path: webhooks/clientConfig/service/namespace
-#     create: true
-# varReference:
-#   - path: metadata/annotations
+#TODO:命名空间
 
----
 # manifests.yaml 的内容
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: training-operator
+  name: validator.training-operator.kubeflow.org
 webhooks:
 - admissionReviewVersions:
   - v1
   clientConfig:
     service:
       name: training-operator
-      namespace: system
+      namespace: hxz-cabt
       path: /validate-kubeflow-org-v1-mxjob
   failurePolicy: Fail
   name: validator.mxjob.training-operator.kubeflow.org
@@ -57,7 +33,7 @@ webhooks:
   clientConfig:
     service:
       name: training-operator
-      namespace: system
+      namespace: hxz-cabt
       path: /validate-kubeflow-org-v1-paddlejob
   failurePolicy: Fail
   name: validator.paddlejob.training-operator.kubeflow.org
@@ -77,7 +53,7 @@ webhooks:
   clientConfig:
     service:
       name: training-operator
-      namespace: system
+      namespace: hxz-cabt
       path: /validate-kubeflow-org-v1-pytorchjob
   failurePolicy: Fail
   name: validator.pytorchjob.training-operator.kubeflow.org
@@ -97,7 +73,7 @@ webhooks:
   clientConfig:
     service:
       name: training-operator
-      namespace: system
+      namespace: hxz-cabt
       path: /validate-kubeflow-org-v1-tfjob
   failurePolicy: Fail
   name: validator.tfjob.training-operator.kubeflow.org
@@ -117,7 +93,7 @@ webhooks:
   clientConfig:
     service:
       name: training-operator
-      namespace: system
+      namespace: hxz-cabt
       path: /validate-kubeflow-org-v1-xgboostjob
   failurePolicy: Fail
   name: validator.xgboostjob.training-operator.kubeflow.org
@@ -133,24 +109,3 @@ webhooks:
     - xgboostjobs
   sideEffects: None
 
-# ---
-# patch.yaml 的内容，如果不使用 kustomize，此部分可以直接应用到 manifests.yaml 中
-# - op: replace
-#   path: /webhooks/0/clientConfig/service/name
-#   value: mpioperator-webhook-service
-# 其他框架的 patch 操作已被注释
-# - op: replace
-#   path: /webhooks/1/clientConfig/service/name
-#   value: training-operator
-# - op: replace
-#   path: /webhooks/2/clientConfig/service/name
-#   value: training-operator
-# - op: replace
-#   path: /webhooks/3/clientConfig/service/name
-#   value: training-operator
-# - op: replace
-#   path: /webhooks/4/clientConfig/service/name
-#   value: training-operator
-# - op: replace
-#   path: /metadata/name
-#   value: validator.training-operator.kubeflow.org

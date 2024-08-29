@@ -156,6 +156,7 @@ def main():
         default=dist.Backend.GLOO,
     )
 
+
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
     if use_cuda:
@@ -200,6 +201,7 @@ def main():
         download=True,
         transform=transforms.Compose([transforms.ToTensor()]),
     )
+
     # Add train and test loaders.
     train_loader = torch.utils.data.DataLoader(
         train_ds,

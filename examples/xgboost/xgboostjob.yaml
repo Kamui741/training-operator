@@ -2,6 +2,7 @@ apiVersion: kubeflow.org/v1
 kind: XGBoostJob
 metadata:
   name: xgboost-dist-iris-test-train
+  namespace: hxz-cabt
 spec:
   xgbReplicaSpecs:
     Master:
@@ -15,7 +16,7 @@ spec:
             ports:
             - containerPort: 9991
               name: xgboostjob-port
-            imagePullPolicy: Always
+            imagePullPolicy: IfNotPresent   ### 新增
             args:
               - --job_type=Train
               - --xgboost_parameter=objective:multi:softprob,num_class:3
@@ -34,7 +35,7 @@ spec:
             ports:
             - containerPort: 9991
               name: xgboostjob-port
-            imagePullPolicy: Always
+            imagePullPolicy: IfNotPresent   ### 新增
             args:
               - --job_type=Train
               - --xgboost_parameter="objective:multi:softprob,num_class:3"

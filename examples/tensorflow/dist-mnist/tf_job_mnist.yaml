@@ -1,7 +1,8 @@
 apiVersion: "kubeflow.org/v1"
 kind: "TFJob"
 metadata:
-  name: "dist-mnist-for-e2e-test"
+  name: dist-mnist-for-e2e-test
+  namespace: hxz-cabt
 spec:
   tfReplicaSpecs:
     PS:
@@ -12,6 +13,7 @@ spec:
           containers:
             - name: tensorflow
               image: kubeflow/tf-dist-mnist-test:latest
+              imagePullPolicy: IfNotPresent   ### 新增
     Worker:
       replicas: 4
       restartPolicy: Never
@@ -20,3 +22,6 @@ spec:
           containers:
             - name: tensorflow
               image: kubeflow/tf-dist-mnist-test:latest
+              imagePullPolicy: IfNotPresent
+
+

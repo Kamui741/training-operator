@@ -1,3 +1,11 @@
+/*
+ * @Author: ChZheng
+ * @Date: 2024-05-13 19:44:41
+ * @LastEditTime: 2024-08-29 19:06:18
+ * @LastEditors: ChZheng
+ * @Description:
+ * @FilePath: /笔记/Users/apple/go/src/github.com/training-operator/pkg/config/config.go
+ */
 // Copyright 2021 The Kubeflow Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +24,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 )
 
 // Config is the global configuration for the training operator.
@@ -27,29 +36,41 @@ var Config struct {
 }
 
 const (
-	// PyTorchInitContainerImageDefault is the default image for the pytorch
-	// init container.
-	PyTorchInitContainerImageDefault = "alpine:3.10"
-	// PyTorchInitContainerTemplateFileDefault is the default template file for
-	// the pytorch init container.
+	// Environment variables and their default values
+	PyTorchInitContainerTemplateFileEnv     = "PYTORCH_INIT_CONTAINER_TEMPLATE_FILE"
 	PyTorchInitContainerTemplateFileDefault = "/etc/config/initContainer.yaml"
-	// PyTorchInitContainerMaxTriesDefault is the default number of tries for the pytorch init container.
-	PyTorchInitContainerMaxTriesDefault = 100
-	// MPIKubectlDeliveryImageDefault is the default image for launcher pod in MPIJob init container.
-	MPIKubectlDeliveryImageEnv = "MPI_KUBECTL_DELIVERY_IMAGE"
-    MPIKubectlDeliveryImageDefault = "kubeflow/kubectl-delivery:latest"
+	PyTorchInitContainerMaxTriesEnv         = "PYTORCH_INIT_CONTAINER_MAX_TRIES"
+	PyTorchInitContainerMaxTriesDefault     = 100
+	MPIKubectlDeliveryImageEnv              = "MPI_KUBECTL_DELIVERY_IMAGE"
+	MPIKubectlDeliveryImageDefault          = "kubeflow/kubectl-delivery:latest"
+	PyTorchInitContainerImageEnv            = "PYTORCH_INIT_CONTAINER_IMAGE"
+	PyTorchInitContainerImageDefault        = "alpine:3.10"
 )
 
-//新增读取环境变量的功能
+// Initialize and load configurations from environment variables
 func init() {
-	// 初始化读取环境变量的功能
+	Config.PyTorchInitContainerTemplateFile = getEnv(PyTorchInitContainerTemplateFileEnv, PyTorchInitContainerTemplateFileDefault)
+	Config.PyTorchInitContainerImage = getEnv(PyTorchInitContainerImageEnv, PyTorchInitContainerImageDefault)
 	Config.MPIKubectlDeliveryImage = getEnv(MPIKubectlDeliveryImageEnv, MPIKubectlDeliveryImageDefault)
+	Config.PyTorchInitContainerMaxTries = getEnvAsInt(PyTorchInitContainerMaxTriesEnv, PyTorchInitContainerMaxTriesDefault)
 }
 
-
+// getEnv retrieves the value of the environment variable named by the key,
+// or returns the provided default value if the variable is not present.
 func getEnv(key, defaultValue string) string {
-    if value,exists := os.LookupEnv(key); exists {
-        return value
-    }
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
+}
+
+// getEnvAsInt retrieves the value of the environment variable as an integer,
+// or returns the provided default value if the variable is not present or is not a valid integer.
+func getEnvAsInt(key string, defaultValue int) int {
+	if value, exists := os.LookupEnv(key); exists {
+		if intValue, err := strconv.Atoi(value); err == nil {
+			return intValue
+		}
+	}
 	return defaultValue
 }
