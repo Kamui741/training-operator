@@ -1,35 +1,18 @@
 from __future__ import print_function
+
 import argparse
 import os
+import time
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from tensorboardX import SummaryWriter
-from torch.utils.data import DataLoader, Dataset, DistributedSampler
-import numpy as np
+from torch.utils.data import DistributedSampler
+from torchvision import datasets, transforms
 
-class MNISTDataset(Dataset):
-    def __init__(self, data_dir, train=True, transform=None):
-        mnist_data = np.load(os.path.join(data_dir, 'mnist.npz'))
-        self.transform = transform
-        if train:
-            self.data = mnist_data['x_train']
-            self.targets = mnist_data['y_train']
-        else:
-            self.data = mnist_data['x_test']
-            self.targets = mnist_data['y_test']
-        self.data = self.data[:, :, :, None]
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, index):
-        img, target = self.data[index], self.targets[index]
-        if self.transform:
-            img = self.transform(img)
-        return img, target
 
 class Net(nn.Module):
     def __init__(self):
@@ -49,32 +32,49 @@ class Net(nn.Module):
         x = self.fc2(x)
         return F.log_softmax(x, dim=1)
 
+
 def train(args, model, device, train_loader, epoch, writer):
     model.train()
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
+
         optimizer.zero_grad()
         output = model(data)
         loss = F.nll_loss(output, target)
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
-            print(f"Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} ({100.0 * batch_idx / len(train_loader):.0f}%)]\tloss={loss.item():.4f}")
-            writer.add_scalar("loss", loss.item(), epoch * len(train_loader) + batch_idx)
+            print(
+                "Train Epoch: {} [{}/{} ({:.0f}%)]\tloss={:.4f}".format(
+                    epoch,
+                    batch_idx * len(data),
+                    len(train_loader.dataset),
+                    100.0 * batch_idx / len(train_loader),
+                    loss.item(),
+                )
+            )
+            niter = epoch * len(train_loader) + batch_idx
+            writer.add_scalar("loss", loss.item(), niter)
+
 
 def test(model, device, test_loader, writer, epoch):
     model.eval()
+
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
+
             output = model(data)
             pred = output.max(1, keepdim=True)[1]
             correct += pred.eq(target.view_as(pred)).sum().item()
-    accuracy = correct / len(test_loader.dataset)
-    print(f"\naccuracy={accuracy:.4f}\n")
+
+    accuracy = float(correct) / len(test_loader.dataset)
+    print("\naccuracy={:.4f}\n".format(accuracy))
     writer.add_scalar("accuracy", accuracy, epoch)
+
 
 def main():
     parser = argparse.ArgumentParser(description="PyTorch MNIST Example")
@@ -88,15 +88,23 @@ def main():
     parser.add_argument("--log-interval", type=int, default=10, metavar="N", help="how many batches to wait before logging training status")
     parser.add_argument("--save-model", action="store_true", default=False, help="For Saving the current Model")
     parser.add_argument("--dir", default="logs", metavar="L", help="directory where summary logs are stored")
-    parser.add_argument("--backend", type=str, help="Distributed backend", choices=[dist.Backend.GLOO, dist.Backend.NCCL, dist.Backend.MPI], default=dist.Backend.GLOO)
-    parser.add_argument("--data-dir", type=str, default="/mnt/data", help="directory where MNIST dataset is stored")
+    parser.add_argument("--backend", type=str, choices=["gloo", "nccl", "mpi"], default="mpi", help="Distributed backend")
+    parser.add_argument("--data-dir", required=True, help="Path to the dataset directory")
+    parser.add_argument("--log-dir", required=True, help="Directory where logs will be saved")
+    parser.add_argument("--model-dir", required=True, help="Directory where the model will be saved")
 
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
+    if use_cuda:
+        print("Using CUDA")
+        if args.backend != "nccl":
+            print("Warning: Using 'nccl' backend is recommended for GPU.")
+
+    writer = SummaryWriter(args.log_dir)
+
+    torch.manual_seed(args.seed)
     device = torch.device("cuda" if use_cuda else "cpu")
 
-    writer = SummaryWriter(args.dir)
-    torch.manual_seed(args.seed)
     model = Net().to(device)
 
     if "WORLD_SIZE" not in os.environ:
@@ -108,18 +116,26 @@ def main():
     dist.init_process_group(backend=args.backend)
     model = nn.parallel.DistributedDataParallel(model)
 
-    train_ds = MNISTDataset(data_dir=args.data_dir, train=True, transform=transforms.ToTensor())
-    test_ds = MNISTDataset(data_dir=args.data_dir, train=False, transform=transforms.ToTensor())
+    train_ds = datasets.MNIST(args.data_dir, train=True, download=True, transform=transforms.ToTensor())
+    test_ds = datasets.MNIST(args.data_dir, train=False, download=True, transform=transforms.ToTensor())
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, sampler=DistributedSampler(train_ds))
-    test_loader = DataLoader(test_ds, batch_size=args.test_batch_size, sampler=DistributedSampler(test_ds))
+    train_loader = torch.utils.data.DataLoader(train_ds, batch_size=args.batch_size, sampler=DistributedSampler(train_ds))
+    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=args.test_batch_size, sampler=DistributedSampler(test_ds))
 
+    start_time = time.time()
     for epoch in range(1, args.epochs + 1):
         train(args, model, device, train_loader, epoch, writer)
         test(model, device, test_loader, writer, epoch)
+    end_time = time.time()
 
     if args.save_model:
-        torch.save(model.state_dict(), "mnist_cnn.pt")
+        torch.save(model.state_dict(), os.path.join(args.model_dir, "mnist_cnn.pt"))
+
+    # Log training duration
+    duration = end_time - start_time
+    print(f"Training duration: {duration:.2f} seconds")
+    writer.add_text("Training Duration", f"Training duration: {duration:.2f} seconds")
+
 
 if __name__ == "__main__":
     main()

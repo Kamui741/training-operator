@@ -1,11 +1,3 @@
-'''
-Author: ChZheng
-Date: 2024-08-29 19:27:09
-LastEditTime: 2024-08-29 19:27:12
-LastEditors: ChZheng
-Description:
-FilePath: /笔记/Users/apple/go/src/github.com/training-operator/examples/sdk/tftrain.py
-'''
 import os
 import tensorflow as tf
 import horovod.tensorflow as hvd
@@ -22,10 +14,8 @@ def main(args):
     if gpus:
         tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
 
-    # 加载数据集，并使用自定义路径
-    mnist_data = np.load(args.data_path)
-    mnist_images = mnist_data['x_train']
-    mnist_labels = mnist_data['y_train']
+    # 加载数据集，并使用自定义路径和文件名
+    (mnist_images, mnist_labels), _ = tf.keras.datasets.mnist.load_data(path=args.data_path)
 
     # 创建数据集
     dataset = tf.data.Dataset.from_tensor_slices(
@@ -88,8 +78,6 @@ def main(args):
 
 if __name__ == '__main__':
     import argparse
-    import numpy as np
-
     parser = argparse.ArgumentParser(description='Horovod TensorFlow MNIST Training')
 
     # 添加完整数据路径、模型目录和日志目录参数

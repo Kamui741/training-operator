@@ -1,36 +1,28 @@
-'''
-Author: ChZheng
-Date: 2024-08-29 19:27:09
-LastEditTime: 2024-08-30 10:59:02
-LastEditors: ChZheng
-Description:
-FilePath: /笔记/Users/apple/go/src/github.com/training-operator/examples/sdk/tftrain.py
-'''
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import argparse
 import os
 import sys
+import time
+
 import tensorflow as tf
-import numpy as np
+
+from tensorflow.examples.tutorials.mnist import input_data
 
 FLAGS = None
 
-def load_data(data_dir):
-    # 加载本地的 mnist.npz 数据集
-    path = os.path.join(data_dir, 'mnist.npz')
-    with np.load(path) as data:
-        train_images, train_labels = data['x_train'], data['y_train']
-        test_images, test_labels = data['x_test'], data['y_test']
-
-    return (train_images / 255.0, train_labels), (test_images / 255.0, test_labels)
-
 def train():
-    # 加载数据
-    (train_images, train_labels), (test_images, test_labels) = load_data(FLAGS.data_dir)
+    start_time = time.time()  # 记录训练开始时间
 
-    # 使用 TensorFlow 的 InteractiveSession
+    # Import data
+    mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=False)
+
     sess = tf.InteractiveSession()
+    # Create a multilayer model.
 
-    # 创建一个多层模型
+    # Input placeholders
     with tf.name_scope('input'):
         x = tf.placeholder(tf.float32, [None, 784], name='x-input')
         y_ = tf.placeholder(tf.int64, [None], name='y-input')
@@ -40,14 +32,17 @@ def train():
         tf.summary.image('input', image_shaped_input, 10)
 
     def weight_variable(shape):
+        """Create a weight variable with appropriate initialization."""
         initial = tf.truncated_normal(shape, stddev=0.1)
         return tf.Variable(initial)
 
     def bias_variable(shape):
+        """Create a bias variable with appropriate initialization."""
         initial = tf.constant(0.1, shape=shape)
         return tf.Variable(initial)
 
     def variable_summaries(var):
+        """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
         with tf.name_scope('summaries'):
             mean = tf.reduce_mean(var)
             tf.summary.scalar('mean', mean)
@@ -59,6 +54,7 @@ def train():
             tf.summary.histogram('histogram', var)
 
     def nn_layer(input_tensor, input_dim, output_dim, layer_name, act=tf.nn.relu):
+        """Reusable code for making a simple neural net layer."""
         with tf.name_scope(layer_name):
             with tf.name_scope('weights'):
                 weights = weight_variable([input_dim, output_dim])
@@ -83,32 +79,29 @@ def train():
     y = nn_layer(dropped, 500, 10, 'layer2', act=tf.identity)
 
     with tf.name_scope('cross_entropy'):
-        cross_entropy = tf.losses.sparse_softmax_cross_entropy(
-            labels=y_, logits=y)
+        cross_entropy = tf.losses.sparse_softmax_cross_entropy(labels=y_, logits=y)
     tf.summary.scalar('cross_entropy', cross_entropy)
 
     with tf.name_scope('train'):
         train_step = tf.train.AdamOptimizer(FLAGS.learning_rate).minimize(cross_entropy)
 
     with tf.name_scope('accuracy'):
-        with tf.name_scope('correct_prediction'):
-            correct_prediction = tf.equal(tf.argmax(y, 1), y_)
-        with tf.name_scope('accuracy'):
-            accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+        correct_prediction = tf.equal(tf.argmax(y, 1), y_)
+        accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     tf.summary.scalar('accuracy', accuracy)
 
     merged = tf.summary.merge_all()
-    train_writer = tf.summary.FileWriter(FLAGS.log_dir + '/train', sess.graph)
-    test_writer = tf.summary.FileWriter(FLAGS.log_dir + '/test')
+    log_dir = FLAGS.log_dir
+    train_writer = tf.summary.FileWriter(log_dir + '/train', sess.graph)
+    test_writer = tf.summary.FileWriter(log_dir + '/test')
     tf.global_variables_initializer().run()
 
     def feed_dict(train):
-        if train:
-            indices = np.random.choice(len(train_images), FLAGS.batch_size)
-            xs, ys = train_images[indices], train_labels[indices]
+        if train or FLAGS.fake_data:
+            xs, ys = mnist.train.next_batch(FLAGS.batch_size, fake_data=FLAGS.fake_data)
             k = FLAGS.dropout
         else:
-            xs, ys = test_images, test_labels
+            xs, ys = mnist.test.images, mnist.test.labels
             k = 1.0
         return {x: xs, y_: ys, keep_prob: k}
 
@@ -135,6 +128,10 @@ def train():
     train_writer.close()
     test_writer.close()
 
+    end_time = time.time()  # 记录训练结束时间
+    duration = end_time - start_time
+    print(f"Training duration: {duration} seconds")
+
 def main(_):
     if tf.gfile.Exists(FLAGS.log_dir):
         tf.gfile.DeleteRecursively(FLAGS.log_dir)
@@ -143,11 +140,12 @@ def main(_):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--fake_data', nargs='?', const=True, type=bool, default=False, help='If true, uses fake data for unit testing.')
     parser.add_argument('--max_steps', type=int, default=1000, help='Number of steps to run trainer.')
     parser.add_argument('--learning_rate', type=float, default=0.001, help='Initial learning rate')
     parser.add_argument('--batch_size', type=int, default=100, help='Training batch size')
     parser.add_argument('--dropout', type=float, default=0.9, help='Keep probability for training dropout.')
-    parser.add_argument('--data_dir', type=str, default='/mnt/data', help='Directory for storing input data')
-    parser.add_argument('--log_dir', type=str, default='/mnt/model/logs', help='Summaries log directory')
+    parser.add_argument('--data_dir', type=str, default='/data/mnist', help='Directory for storing input data')
+    parser.add_argument('--log_dir', type=str, default='/data/logs', help='Summaries log directory')
     FLAGS, unparsed = parser.parse_known_args()
     tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
