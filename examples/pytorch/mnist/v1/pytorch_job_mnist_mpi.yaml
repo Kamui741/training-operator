@@ -24,6 +24,18 @@ spec:
       restartPolicy: OnFailure
       template:
         spec:
+          initContainers:
+            - name: init-pytorch
+              image: kmu1/kubectl-delivery:latest
+              imagePullPolicy: IfNotPresent
+              resources:
+                limits:
+                  cpu: 100m
+                  memory: 20Mi
+                requests:
+                  cpu: 50m
+                  memory: 10Mi
+              command: ['sh', '-c', 'err=1;for i in $(seq 100); do if nslookup master; then err=0 && break; fi; echo waiting for master; sleep 2; done; exit $err']
           containers:
             - name: pytorch
               image: kubeflow/pytorch-dist-mnist:latest

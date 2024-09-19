@@ -23,7 +23,7 @@ def main(args):
         tf.config.experimental.set_visible_devices(gpus[hvd.local_rank()], 'GPU')
 
     # 加载数据集，并使用自定义路径和文件名
-    (mnist_images, mnist_labels), _ = tf.keras.datasets.mnist.load_data(path=args.data_path)
+    (mnist_images, mnist_labels), _ = tf.keras.datasets.mnist.load_data(path=args.data_dir)
 
     # 创建数据集
     dataset = tf.data.Dataset.from_tensor_slices(
@@ -94,7 +94,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Horovod TensorFlow MNIST Training')
 
     # 添加完整数据路径、模型目录和日志目录参数
-    parser.add_argument('--data_path', type=str, required=True, help='Path to the dataset file including filename')
+    parser.add_argument('--data_dir', type=str, required=True, help='Path to the dataset file including filename')
     parser.add_argument('--model_dir', type=str, required=True, help='Path to the model directory')
     parser.add_argument('--log_dir', type=str, required=True, help='Path to the log directory')
 

@@ -1,10 +1,10 @@
 /*
  * @Author: ChZheng
  * @Date: 2024-05-13 19:44:41
- * @LastEditTime: 2024-08-29 19:06:18
+ * @LastEditTime: 2024-09-06 08:56:57
  * @LastEditors: ChZheng
  * @Description:
- * @FilePath: /笔记/Users/apple/go/src/github.com/training-operator/pkg/config/config.go
+ * @FilePath: /training-operator/pkg/config/config.go
  */
 // Copyright 2021 The Kubeflow Authors
 //
@@ -44,7 +44,8 @@ const (
 	MPIKubectlDeliveryImageEnv              = "MPI_KUBECTL_DELIVERY_IMAGE"
 	MPIKubectlDeliveryImageDefault          = "kubeflow/kubectl-delivery:latest"
 	PyTorchInitContainerImageEnv            = "PYTORCH_INIT_CONTAINER_IMAGE"
-	PyTorchInitContainerImageDefault        = "alpine:3.10"
+	// PyTorchInitContainerImageDefault        = "alpine:3.10"
+	PyTorchInitContainerImageDefault = "PYTORCH_INIT_CONTAINER_IMAGE"
 )
 
 // Initialize and load configurations from environment variables

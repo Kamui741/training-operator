@@ -22,6 +22,7 @@ spec:
         - command:
             - /manager
           image: kmu1/training-operator:latest  ############
+          imagePullPolicy: IfNotPresent
           name: training-operator
           ports:
             - containerPort: 8080
@@ -39,12 +40,12 @@ spec:
                   fieldPath: metadata.name
             - name: MPI_KUBECTL_DELIVERY_IMAGE
               value: kmu1/kubectl-delivery:latest ##############
-            - name: PYTORCH_INIT_CONTAINER_IMAGE
-              value: alpine:3.10
-            - name: PYTORCH_INIT_CONTAINER_TEMPLATE_FILE
-              value: /etc/config/initContainer.yaml
-            - name: PYTORCH_INIT_CONTAINER_MAX_TRIES
-              value: "100"
+            # - name: PYTORCH_INIT_CONTAINER_IMAGE
+            #   value: kmu1/kubectl-delivery:latest
+            # - name: PYTORCH_INIT_CONTAINER_TEMPLATE_FILE
+            #   value: /etc/config/initContainer.yaml
+            # - name: PYTORCH_INIT_CONTAINER_MAX_TRIES
+            #   value: "100"
           securityContext:
             allowPrivilegeEscalation: false
           volumeMounts:

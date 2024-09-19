@@ -6,20 +6,41 @@ import argparse
 import os
 import sys
 import time
-
+import numpy as np
 import tensorflow as tf
 
-from tensorflow.examples.tutorials.mnist import input_data
-
 FLAGS = None
+
+def load_data():
+    """从本地加载 MNIST 数据集"""
+    with np.load(FLAGS.data_path) as data:
+        x_train = data['x_train']
+        y_train = data['y_train']
+        x_test = data['x_test']
+        y_test = data['y_test']
+
+    # 将数据展平
+    x_train = x_train.reshape(-1, 784)
+    x_test = x_test.reshape(-1, 784)
+
+    return (x_train, y_train), (x_test, y_test)
 
 def train():
     start_time = time.time()  # 记录训练开始时间
 
     # Import data
-    mnist = input_data.read_data_sets(FLAGS.data_dir, one_hot=False)
+    (x_train, y_train), (x_test, y_test) = load_data()
 
+    # Build dataset
+    train_dataset = tf.data.Dataset.from_tensor_slices((x_train, y_train))
+    train_dataset = train_dataset.shuffle(10000).batch(FLAGS.batch_size).repeat()
+
+    test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test))
+    test_dataset = test_dataset.batch(FLAGS.batch_size)
+
+    # Create a session and initialize variables
     sess = tf.InteractiveSession()
+
     # Create a multilayer model.
 
     # Input placeholders
@@ -96,18 +117,10 @@ def train():
     test_writer = tf.summary.FileWriter(log_dir + '/test')
     tf.global_variables_initializer().run()
 
-    def feed_dict(train):
-        if train or FLAGS.fake_data:
-            xs, ys = mnist.train.next_batch(FLAGS.batch_size, fake_data=FLAGS.fake_data)
-            k = FLAGS.dropout
-        else:
-            xs, ys = mnist.test.images, mnist.test.labels
-            k = 1.0
-        return {x: xs, y_: ys, keep_prob: k}
-
+    # Training loop
     for i in range(FLAGS.max_steps):
         if i % 10 == 0:
-            summary, acc = sess.run([merged, accuracy], feed_dict=feed_dict(False))
+            summary, acc = sess.run([merged, accuracy], feed_dict={x: x_test, y_: y_test, keep_prob: 1.0})
             test_writer.add_summary(summary, i)
             print('Accuracy at step %s: %s' % (i, acc))
         else:
@@ -115,18 +128,21 @@ def train():
                 run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
                 run_metadata = tf.RunMetadata()
                 summary, _ = sess.run([merged, train_step],
-                                      feed_dict=feed_dict(True),
                                       options=run_options,
                                       run_metadata=run_metadata)
                 train_writer.add_run_metadata(run_metadata, 'step%03d' % i)
                 train_writer.add_summary(summary, i)
                 print('Adding run metadata for', i)
             else:
-                summary, _ = sess.run([merged, train_step], feed_dict=feed_dict(True))
+                summary, _ = sess.run([merged, train_step])
                 train_writer.add_summary(summary, i)
 
     train_writer.close()
     test_writer.close()
+
+    # 保存模型
+    saver = tf.train.Saver()
+    saver.save(sess, FLAGS.model_path)
 
     end_time = time.time()  # 记录训练结束时间
     duration = end_time - start_time
@@ -145,7 +161,8 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate', type=float, default=0.001, help='Initial learning rate')
     parser.add_argument('--batch_size', type=int, default=100, help='Training batch size')
     parser.add_argument('--dropout', type=float, default=0.9, help='Keep probability for training dropout.')
-    parser.add_argument('--data_dir', type=str, default='/data/mnist', help='Directory for storing input data')
+    parser.add_argument('--data_path', type=str, default='/data/mnist/mnist.npz', help='Path to the MNIST data file')
     parser.add_argument('--log_dir', type=str, default='/data/logs', help='Summaries log directory')
+    parser.add_argument('--model_path', type=str, default='/data/model/model.ckpt', help='Path to save the trained model')
     FLAGS, unparsed = parser.parse_known_args()
     tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
