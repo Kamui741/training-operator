@@ -88,18 +88,29 @@ def main():
     parser.add_argument("--log-interval", type=int, default=10, metavar="N", help="每训练多少批次记录一次日志（默认: 10）")
     parser.add_argument("--save-model", action="store_true", default=False, help="是否保存当前模型")
     parser.add_argument("--dir", default="logs", metavar="L", help="保存日志的目录")
-    parser.add_argument("--backend", type=str, choices=["gloo", "nccl", "mpi"], default="mpi", help="分布式训练的后端（gloo、nccl 或 mpi）")
+    parser.add_argument("--backend", type=str, choices=["gloo", "nccl", "mpi"], default=None, help="分布式训练的后端（gloo、nccl 或 mpi）")
     parser.add_argument("--data-dir", required=True, help="数据集目录路径")
     parser.add_argument("--log-dir", required=True, help="保存日志的目录路径")
     parser.add_argument("--model-dir", required=True, help="保存模型的目录路径")
 
-
     args = parser.parse_args()
+
+    # 是否使用CUDA (GPU)
     use_cuda = not args.no_cuda and torch.cuda.is_available()
+
+    # 自动选择最佳后端
     if use_cuda:
-        print("Using CUDA")
-        if args.backend != "nccl":
+        print("Using CUDA (GPU)")
+        # 使用 GPU 时建议使用 NCCL
+        if args.backend is None:
+            args.backend = "nccl"
+        elif args.backend != "nccl":
             print("Warning: Using 'nccl' backend is recommended for GPU.")
+    else:
+        print("Using CPU")
+        # CPU 的默认后端是 MPI 或 Gloo
+        if args.backend is None:
+            args.backend = "gloo"  # 如果没有选择 GPU，默认使用 gloo
 
     writer = SummaryWriter(args.log_dir)
 
@@ -108,18 +119,24 @@ def main():
 
     model = Net().to(device)
 
+    # 设置默认的分布式环境变量（本地单机时）
     if "WORLD_SIZE" not in os.environ:
         os.environ["RANK"] = "0"
         os.environ["WORLD_SIZE"] = "1"
         os.environ["MASTER_ADDR"] = "localhost"
         os.environ["MASTER_PORT"] = "1234"
 
+    # 初始化分布式进程组
     dist.init_process_group(backend=args.backend)
+
+    # 将模型包装为分布式模型
     model = nn.parallel.DistributedDataParallel(model)
 
+    # 加载数据集
     train_ds = datasets.MNIST(args.data_dir, train=True, download=True, transform=transforms.ToTensor())
     test_ds = datasets.MNIST(args.data_dir, train=False, download=True, transform=transforms.ToTensor())
 
+    # 使用分布式采样器
     train_loader = torch.utils.data.DataLoader(train_ds, batch_size=args.batch_size, sampler=DistributedSampler(train_ds))
     test_loader = torch.utils.data.DataLoader(test_ds, batch_size=args.test_batch_size, sampler=DistributedSampler(test_ds))
 
@@ -129,10 +146,11 @@ def main():
         test(model, device, test_loader, writer, epoch)
     end_time = time.time()
 
+    # 保存模型
     if args.save_model:
         torch.save(model.state_dict(), os.path.join(args.model_dir, "mnist_cnn.pt"))
 
-    # Log training duration
+    # 输出训练时间
     duration = end_time - start_time
     print(f"Training duration: {duration:.2f} seconds")
     writer.add_text("Training Duration", f"Training duration: {duration:.2f} seconds")

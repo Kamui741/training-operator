@@ -64,16 +64,73 @@ class Net(nn.Module):
 
 
 def main(args):
+    # 初始化 Horovod
+    hvd.init()
+
+    # 设置设备为 CUDA 或 CPU
+    use_cuda = not args.no_cuda and torch.cuda.is_available()  # 如果有 GPU 且未指定禁用 CUDA，则使用 GPU
+    device = torch.device("cuda" if use_cuda else "cpu")  # 设置设备为 GPU 或 CPU
+    torch.manual_seed(args.seed)  # 设置随机种子
+    torch.set_num_threads(1)  # 设置为单线程
+
+    # Load the mnist.npz dataset
+    data = np.load(args.data_dir)
+    x_train, y_train = data['x_train'], data['y_train']
+    x_test, y_test = data['x_test'], data['y_test']
+    train_dataset = torch.utils.data.TensorDataset(
+        torch.tensor(x_train).unsqueeze(1).float().to(device),  # 数据转移到指定设备
+        torch.tensor(y_train).long().to(device)
+    )
+    test_dataset = torch.utils.data.TensorDataset(
+        torch.tensor(x_test).unsqueeze(1).float().to(device),  # 数据转移到指定设备
+        torch.tensor(y_test).long().to(device)
+    )
+
+    # Use DistributedSampler
+    train_sampler = torch.utils.data.distributed.DistributedSampler(
+        train_dataset, num_replicas=hvd.size(), rank=hvd.rank()
+    )
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=args.batch_size, sampler=train_sampler
+    )
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.test_batch_size)
+
+    model = Net().to(device)  # 将模型转移到 GPU 或 CPU
+
+    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+
+    # Horovod: 广播模型参数到所有进程
+    hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+    hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+
+    # Horovod: 包装优化器为分布式优化器
+    optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
+
+    # 混合精度训练（可选）
+    if args.use_mixed_precision:
+        scaler = torch.cuda.amp.GradScaler()
+
     def train_epoch(epoch):
         model.train()
         train_sampler.set_epoch(epoch)
         start_time = time.time()
         for batch_idx, (data, target) in enumerate(train_loader):
+            data, target = data.to(device), target.to(device)  # 数据转移到 GPU 或 CPU
             optimizer.zero_grad()
-            output = model(data)
-            loss = F.nll_loss(output, target)
-            loss.backward()
-            optimizer.step()
+            if args.use_mixed_precision:
+                # 混合精度训练
+                with torch.cuda.amp.autocast():
+                    output = model(data)
+                    loss = F.nll_loss(output, target)
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                output = model(data)
+                loss = F.nll_loss(output, target)
+                loss.backward()
+                optimizer.step()
+
             if batch_idx % args.log_interval == 0:
                 print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_sampler)} '
                       f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
@@ -86,6 +143,7 @@ def main(args):
         correct = 0
         with torch.no_grad():
             for data, target in test_loader:
+                data, target = data.to(device), target.to(device)  # 测试数据转移到 GPU 或 CPU
                 output = model(data)
                 test_loss += F.nll_loss(output, target, reduction='sum').item()
                 pred = output.argmax(dim=1, keepdim=True)
@@ -93,31 +151,6 @@ def main(args):
         test_loss /= len(test_loader.dataset)
         print(f'Test set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} '
               f'({100. * correct / len(test_loader.dataset):.0f}%)')
-
-    hvd.init()
-    torch.manual_seed(args.seed)
-    torch.set_num_threads(1)
-
-    # Load the mnist.npz dataset
-    data = np.load(args.data_dir)
-    x_train, y_train = data['x_train'], data['y_train']
-    x_test, y_test = data['x_test'], data['y_test']
-    train_dataset = torch.utils.data.TensorDataset(
-        torch.tensor(x_train).unsqueeze(1).float(), torch.tensor(y_train).long())
-    test_dataset = torch.utils.data.TensorDataset(
-        torch.tensor(x_test).unsqueeze(1).float(), torch.tensor(y_test).long())
-
-    # Use DistributedSampler
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=hvd.size(), rank=hvd.rank())
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, sampler=train_sampler)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.test_batch_size)
-
-    model = Net()
-
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
-    hvd.broadcast_parameters(model.state_dict(), root_rank=0)
-    hvd.broadcast_optimizer_state(optimizer, root_rank=0)
-    optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
 
     for epoch in range(1, args.epochs + 1):
         train_epoch(epoch)
