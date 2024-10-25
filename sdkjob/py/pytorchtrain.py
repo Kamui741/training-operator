@@ -1,160 +1,160 @@
-from __future__ import print_function
-
-import argparse
 import os
+import sys
 import time
-
+import argparse
+import numpy as np
 import torch
-import torch.distributed as dist
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-from tensorboardX import SummaryWriter
-from torch.utils.data import DistributedSampler
-from torchvision import datasets, transforms
+from torch.utils.data import DataLoader, TensorDataset
 
+try:
+    import horovod.torch as hvd
+    HOROVOD_ENABLED = True
+except ImportError:
+    HOROVOD_ENABLED = False
 
-class Net(nn.Module):
+FLAGS = None
+
+def check_gpu():
+    """自动检测 GPU 可用性"""
+    device = 'cuda' if torch.cuda.is_available() and not FLAGS.no_cuda else 'cpu'
+    print(f"Using device: {device}")
+    return device
+
+def load_data():
+    """从本地加载 MNIST 数据集"""
+    with np.load(FLAGS.data_dir) as data:
+        x_train = data['x_train']
+        y_train = data['y_train']
+        x_test = data['x_test']
+        y_test = data['y_test']
+
+    # 将数据展平并归一化
+    x_train = x_train.reshape(-1, 784) / 255.0
+    x_test = x_test.reshape(-1, 784) / 255.0
+
+    return (x_train, y_train), (x_test, y_test)
+
+def create_datasets(x_train, y_train, x_test, y_test):
+    """创建训练和测试数据集"""
+    train_dataset = TensorDataset(torch.tensor(x_train, dtype=torch.float32), torch.tensor(y_train, dtype=torch.long))
+    test_dataset = TensorDataset(torch.tensor(x_test, dtype=torch.float32), torch.tensor(y_test, dtype=torch.long))
+
+    train_loader = DataLoader(train_dataset, batch_size=FLAGS.batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=FLAGS.test_batch_size)
+
+    return train_loader, test_loader
+
+class SimpleNN(nn.Module):
+    """构建模型"""
     def __init__(self):
-        super(Net, self).__init__()
-        self.conv1 = nn.Conv2d(1, 20, 5, 1)
-        self.conv2 = nn.Conv2d(20, 50, 5, 1)
-        self.fc1 = nn.Linear(4 * 4 * 50, 500)
+        super(SimpleNN, self).__init__()
+        self.fc1 = nn.Linear(784, 500)
+        self.dropout = nn.Dropout(1 - FLAGS.dropout)
         self.fc2 = nn.Linear(500, 10)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.max_pool2d(x, 2, 2)
-        x = F.relu(self.conv2(x))
-        x = F.max_pool2d(x, 2, 2)
-        x = x.view(-1, 4 * 4 * 50)
-        x = F.relu(self.fc1(x))
+        x = self.fc1(x)
+        x = nn.ReLU()(x)
+        x = self.dropout(x)
         x = self.fc2(x)
-        return F.log_softmax(x, dim=1)
+        return x
 
+def main():
+    if HOROVOD_ENABLED:
+        # 初始化 Horovod
+        hvd.init()
 
-def train(args, model, device, train_loader, epoch, writer):
-    model.train()
-    optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+    device = check_gpu()
 
-    for batch_idx, (data, target) in enumerate(train_loader):
-        data, target = data.to(device), target.to(device)
+    # 加载数据集
+    (x_train, y_train), (x_test, y_test) = load_data()
 
-        optimizer.zero_grad()
-        output = model(data)
-        loss = F.nll_loss(output, target)
-        loss.backward()
-        optimizer.step()
-        if batch_idx % args.log_interval == 0:
-            print(
-                "Train Epoch: {} [{}/{} ({:.0f}%)]\tloss={:.4f}".format(
-                    epoch,
-                    batch_idx * len(data),
-                    len(train_loader.dataset),
-                    100.0 * batch_idx / len(train_loader),
-                    loss.item(),
-                )
-            )
-            niter = epoch * len(train_loader) + batch_idx
-            writer.add_scalar("loss", loss.item(), niter)
+    # 创建数据集
+    train_loader, test_loader = create_datasets(x_train, y_train, x_test, y_test)
 
+    # 构建模型
+    model = SimpleNN().to(device)
 
-def test(model, device, test_loader, writer, epoch):
+    # Horovod: adjust learning rate based on number of GPUs.
+    scaled_lr = FLAGS.lr * (hvd.size() if HOROVOD_ENABLED else 1)
+    optimizer = optim.SGD(model.parameters(), lr=scaled_lr, momentum=FLAGS.momentum)
+
+    if HOROVOD_ENABLED:
+        optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters(), op=hvd.Average)
+
+        # Horovod: broadcast parameters & optimizer state.
+        hvd.broadcast_parameters(model.state_dict(), root_rank=0)
+        hvd.broadcast_optimizer_state(optimizer, root_rank=0)
+
+    criterion = nn.CrossEntropyLoss()
+
+    # 设置随机种子
+    torch.manual_seed(FLAGS.seed)
+
+    # 记录训练开始时间
+    start_time = time.time()
+
+    # Train the model.
+    for epoch in range(FLAGS.epochs):
+        model.train()
+        for batch_idx, (data, target) in enumerate(train_loader):
+            data, target = data.to(device), target.to(device)
+
+            optimizer.zero_grad()
+            output = model(data)
+            loss = criterion(output, target)
+            loss.backward()
+            optimizer.step()
+
+            if batch_idx % FLAGS.log_interval == 0:
+                print(f'Epoch {epoch + 1}/{FLAGS.epochs}, Batch {batch_idx}, Loss: {loss.item()}')
+
+    # 评估模型
     model.eval()
-
+    test_loss = 0
     correct = 0
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
-
             output = model(data)
-            pred = output.max(1, keepdim=True)[1]
+            test_loss += criterion(output, target).item()  # sum up batch loss
+            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
             correct += pred.eq(target.view_as(pred)).sum().item()
 
-    accuracy = float(correct) / len(test_loader.dataset)
-    print("\naccuracy={:.4f}\n".format(accuracy))
-    writer.add_scalar("accuracy", accuracy, epoch)
+    test_loss /= len(test_loader.dataset)
+    print(f'Test loss: {test_loss:.4f}, Accuracy: {correct / len(test_loader.dataset):.4f}')
 
+    # 保存模型
+    if not HOROVOD_ENABLED or hvd.rank() == 0:
+        torch.save(model.state_dict(), FLAGS.model_dir)
 
-def main():
+    # 计算并打印训练时长
+    end_time = time.time()
+    training_duration = end_time - start_time
+    print(f"Training completed in {training_duration:.2f} seconds")
+
+if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="PyTorch MNIST 示例")
     parser.add_argument("--batch-size", type=int, default=64, metavar="N", help="训练的输入批量大小（默认: 64）")
     parser.add_argument("--test-batch-size", type=int, default=1000, metavar="N", help="测试的输入批量大小（默认: 1000）")
     parser.add_argument("--epochs", type=int, default=1, metavar="N", help="训练的轮数（默认: 1）")
     parser.add_argument("--lr", type=float, default=0.01, metavar="LR", help="学习率（默认: 0.01）")
     parser.add_argument("--momentum", type=float, default=0.5, metavar="M", help="SGD 动量（默认: 0.5）")
-    parser.add_argument("--no-cuda", action="store_true", default=False, help="禁用 CUDA 训练")
     parser.add_argument("--seed", type=int, default=1, metavar="S", help="随机种子（默认: 1）")
     parser.add_argument("--log-interval", type=int, default=10, metavar="N", help="每训练多少批次记录一次日志（默认: 10）")
-    parser.add_argument("--save-model", action="store_true", default=False, help="是否保存当前模型")
-    parser.add_argument("--dir", default="logs", metavar="L", help="保存日志的目录")
-    parser.add_argument("--backend", type=str, choices=["gloo", "nccl", "mpi"], default=None, help="分布式训练的后端（gloo、nccl 或 mpi）")
-    parser.add_argument("--data-dir", required=True, help="数据集目录路径")
-    parser.add_argument("--log-dir", required=True, help="保存日志的目录路径")
-    parser.add_argument("--model-dir", required=True, help="保存模型的目录路径")
+    parser.add_argument("--dropout", type=float, default=0.5, metavar="D", help="dropout 概率（默认: 0.5）")
+    parser.add_argument("--backend", type=str, choices=["gloo", "nccl", "mpi"], default="nccl", help="分布式训练的后端（gloo、nccl 或 mpi）")
+    parser.add_argument("--no-cuda", action="store_true", default=False, help="禁用 CUDA 训练")
+    parser.add_argument("--data_dir", required=True, help="数据集目录路径")
+    parser.add_argument("--log_dir", required=True, help="保存日志的目录路径")
+    parser.add_argument("--model_dir", required=True, help="保存模型的目录路径")
 
-    args = parser.parse_args()
+    FLAGS, unparsed = parser.parse_known_args()
 
-    # 是否使用CUDA (GPU)
-    use_cuda = not args.no_cuda and torch.cuda.is_available()
+    # 使用 --backend 参数来配置分布式后端
+    if FLAGS.backend:
+        torch.distributed.init_process_group(backend=FLAGS.backend)
 
-    # 自动选择最佳后端
-    if use_cuda:
-        print("Using CUDA (GPU)")
-        # 使用 GPU 时建议使用 NCCL
-        if args.backend is None:
-            args.backend = "nccl"
-        elif args.backend != "nccl":
-            print("Warning: Using 'nccl' backend is recommended for GPU.")
-    else:
-        print("Using CPU")
-        # CPU 的默认后端是 MPI 或 Gloo
-        if args.backend is None:
-            args.backend = "gloo"  # 如果没有选择 GPU，默认使用 gloo
-
-    writer = SummaryWriter(args.log_dir)
-
-    torch.manual_seed(args.seed)
-    device = torch.device("cuda" if use_cuda else "cpu")
-
-    model = Net().to(device)
-
-    # 设置默认的分布式环境变量（本地单机时）
-    if "WORLD_SIZE" not in os.environ:
-        os.environ["RANK"] = "0"
-        os.environ["WORLD_SIZE"] = "1"
-        os.environ["MASTER_ADDR"] = "localhost"
-        os.environ["MASTER_PORT"] = "1234"
-
-    # 初始化分布式进程组
-    dist.init_process_group(backend=args.backend)
-
-    # 将模型包装为分布式模型
-    model = nn.parallel.DistributedDataParallel(model)
-
-    # 加载数据集
-    train_ds = datasets.MNIST(args.data_dir, train=True, download=True, transform=transforms.ToTensor())
-    test_ds = datasets.MNIST(args.data_dir, train=False, download=True, transform=transforms.ToTensor())
-
-    # 使用分布式采样器
-    train_loader = torch.utils.data.DataLoader(train_ds, batch_size=args.batch_size, sampler=DistributedSampler(train_ds))
-    test_loader = torch.utils.data.DataLoader(test_ds, batch_size=args.test_batch_size, sampler=DistributedSampler(test_ds))
-
-    start_time = time.time()
-    for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, epoch, writer)
-        test(model, device, test_loader, writer, epoch)
-    end_time = time.time()
-
-    # 保存模型
-    if args.save_model:
-        torch.save(model.state_dict(), os.path.join(args.model_dir, "mnist_cnn.pt"))
-
-    # 输出训练时间
-    duration = end_time - start_time
-    print(f"Training duration: {duration:.2f} seconds")
-    writer.add_text("Training Duration", f"Training duration: {duration:.2f} seconds")
-
-
-if __name__ == "__main__":
     main()

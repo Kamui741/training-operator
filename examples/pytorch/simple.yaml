@@ -12,7 +12,8 @@ spec:
         spec:
           containers:
             - name: pytorch
-              image: docker.io/kubeflowkatib/pytorch-mnist:v1beta1-45c5727
+              # image: docker.io/kubeflowkatib/pytorch-mnist:v1beta1-45c5727
+              image: kmu1/pytorch:22.08-py3
               imagePullPolicy: IfNotPresent   ### 新增
               command:
                 - "python3"
@@ -25,7 +26,8 @@ spec:
         spec:
           containers:
             - name: pytorch
-              image: docker.io/kubeflowkatib/pytorch-mnist:v1beta1-45c5727
+              # image: docker.io/kubeflowkatib/pytorch-mnist:v1beta1-45c5727
+              image: kmu1/pytorch:22.08-py3
               imagePullPolicy: IfNotPresent   ### 新增
               command:
                 - "python3"

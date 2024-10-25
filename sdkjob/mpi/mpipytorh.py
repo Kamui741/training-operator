@@ -1,6 +1,5 @@
 import argparse
 import os
-import time
 import numpy as np
 import torch.multiprocessing as mp
 import torch.nn as nn
@@ -8,11 +7,32 @@ import torch.nn.functional as F
 import torch.optim as optim
 import torch.utils.data.distributed
 from filelock import FileLock
+from torchvision import transforms
 import horovod
 import horovod.torch as hvd
+from torch.utils.data import Dataset, DataLoader
+
+# 自定义数据集类，用于加载 mnist.npz
+class MNISTDataset(Dataset):
+    def __init__(self, data_dir):
+        with np.load(os.path.join(data_dir, 'mnist.npz')) as data:
+            self.x = data['x_train']
+            self.y = data['y_train']
+        self.x = self.x.astype(np.float32) / 255.0  # 归一化
+        self.x = np.expand_dims(self.x, axis=1)  # 增加通道维度
+
+    def __len__(self):
+        return len(self.y)
+
+    def __getitem__(self, index):
+        return self.x[index], self.y[index]
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
+parser.add_argument('--data-dir', type=str, default='./data',
+                    help='location of the training dataset in the local filesystem')
+parser.add_argument('--model-dir', type=str, default='./model',
+                    help='directory to save the trained model')
 parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                     help='input batch size for training (default: 64)')
 parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
@@ -29,20 +49,11 @@ parser.add_argument('--seed', type=int, default=42, metavar='S',
                     help='random seed (default: 42)')
 parser.add_argument('--log-interval', type=int, default=10, metavar='N',
                     help='how many batches to wait before logging training status')
-parser.add_argument('--fp16-allreduce', action='store_true', default=False,
-                    help='use fp16 compression during allreduce')
-parser.add_argument('--use-mixed-precision', action='store_true', default=False,
-                    help='use mixed precision for training')
-parser.add_argument('--use-adasum', action='store_true', default=False,
-                    help='use adasum algorithm to do reduction')
-parser.add_argument('--gradient-predivide-factor', type=float, default=1.0,
-                    help='apply gradient predivide factor in optimizer (default: 1.0)')
-parser.add_argument('--data-dir', required=True,
-                    help='location of the mnist.npz dataset')
-parser.add_argument('--model-dir', required=True,
-                    help='directory to save the model')
-parser.add_argument('--log-dir', required=True,
-                    help='directory to save training logs')
+
+# Arguments when not run through horovodrun
+parser.add_argument('--num-proc', type=int)
+parser.add_argument('--hosts', help='hosts to run on in notation: hostname:slots[,host2:slots[,...]]')
+parser.add_argument('--communication', help='collaborative communication to use: gloo, mpi')
 
 class Net(nn.Module):
     def __init__(self):
@@ -62,106 +73,90 @@ class Net(nn.Module):
         x = self.fc2(x)
         return F.log_softmax(x)
 
-
 def main(args):
-    # 初始化 Horovod
+    # Horovod: initialize library.
     hvd.init()
+    torch.manual_seed(args.seed)
 
-    # 设置设备为 CUDA 或 CPU
-    use_cuda = not args.no_cuda and torch.cuda.is_available()  # 如果有 GPU 且未指定禁用 CUDA，则使用 GPU
-    device = torch.device("cuda" if use_cuda else "cpu")  # 设置设备为 GPU 或 CPU
-    torch.manual_seed(args.seed)  # 设置随机种子
-    torch.set_num_threads(1)  # 设置为单线程
+    if args.cuda:
+        torch.cuda.set_device(hvd.local_rank())
+        torch.cuda.manual_seed(args.seed)
 
-    # Load the mnist.npz dataset
-    data = np.load(args.data_dir)
-    x_train, y_train = data['x_train'], data['y_train']
-    x_test, y_test = data['x_test'], data['y_test']
-    train_dataset = torch.utils.data.TensorDataset(
-        torch.tensor(x_train).unsqueeze(1).float().to(device),  # 数据转移到指定设备
-        torch.tensor(y_train).long().to(device)
-    )
-    test_dataset = torch.utils.data.TensorDataset(
-        torch.tensor(x_test).unsqueeze(1).float().to(device),  # 数据转移到指定设备
-        torch.tensor(y_test).long().to(device)
-    )
+    torch.set_num_threads(1)
 
-    # Use DistributedSampler
-    train_sampler = torch.utils.data.distributed.DistributedSampler(
-        train_dataset, num_replicas=hvd.size(), rank=hvd.rank()
-    )
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, sampler=train_sampler
-    )
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.test_batch_size)
+    kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
 
-    model = Net().to(device)  # 将模型转移到 GPU 或 CPU
+    # 加载本地 MNIST 数据集
+    data_dir = args.data_dir
+    with FileLock(os.path.expanduser("~/.horovod_lock")):
+        train_dataset = MNISTDataset(data_dir)
+
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
+                              sampler=train_sampler, **kwargs)
+
+    # 测试集数据集
+    test_dataset = MNISTDataset(data_dir)  # 假设测试集也是在同一文件中
+    test_sampler = torch.utils.data.distributed.DistributedSampler(test_dataset, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=args.test_batch_size,
+                             sampler=test_sampler, **kwargs)
+
+    model = Net()
+
+    if args.cuda:
+        model.cuda()
 
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
 
-    # Horovod: 广播模型参数到所有进程
+    # Horovod: 广播模型参数
     hvd.broadcast_parameters(model.state_dict(), root_rank=0)
     hvd.broadcast_optimizer_state(optimizer, root_rank=0)
 
-    # Horovod: 包装优化器为分布式优化器
-    optimizer = hvd.DistributedOptimizer(optimizer, named_parameters=model.named_parameters())
-
-    # 混合精度训练（可选）
-    if args.use_mixed_precision:
-        scaler = torch.cuda.amp.GradScaler()
-
-    def train_epoch(epoch):
+    for epoch in range(1, args.epochs + 1):
         model.train()
         train_sampler.set_epoch(epoch)
-        start_time = time.time()
         for batch_idx, (data, target) in enumerate(train_loader):
-            data, target = data.to(device), target.to(device)  # 数据转移到 GPU 或 CPU
+            if args.cuda:
+                data, target = data.cuda(), target.cuda()
             optimizer.zero_grad()
-            if args.use_mixed_precision:
-                # 混合精度训练
-                with torch.cuda.amp.autocast():
-                    output = model(data)
-                    loss = F.nll_loss(output, target)
-                scaler.scale(loss).backward()
-                scaler.step(optimizer)
-                scaler.update()
-            else:
-                output = model(data)
-                loss = F.nll_loss(output, target)
-                loss.backward()
-                optimizer.step()
+            output = model(data)
+            loss = F.nll_loss(output, target)
+            loss.backward()
+            optimizer.step()
 
             if batch_idx % args.log_interval == 0:
                 print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_sampler)} '
                       f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
-        end_time = time.time()
-        print(f"Epoch {epoch} training time: {end_time - start_time:.2f} seconds")
 
-    def test():
+        # 测试过程
         model.eval()
         test_loss = 0.
-        correct = 0
+        test_accuracy = 0.
         with torch.no_grad():
             for data, target in test_loader:
-                data, target = data.to(device), target.to(device)  # 测试数据转移到 GPU 或 CPU
+                if args.cuda:
+                    data, target = data.cuda(), target.cuda()
                 output = model(data)
                 test_loss += F.nll_loss(output, target, reduction='sum').item()
                 pred = output.argmax(dim=1, keepdim=True)
-                correct += pred.eq(target.view_as(pred)).sum().item()
-        test_loss /= len(test_loader.dataset)
-        print(f'Test set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} '
-              f'({100. * correct / len(test_loader.dataset):.0f}%)')
+                test_accuracy += pred.eq(target.view_as(pred)).sum().item()
 
-    for epoch in range(1, args.epochs + 1):
-        train_epoch(epoch)
-        test()
+        test_loss /= len(test_sampler)
+        test_accuracy /= len(test_sampler)
 
-    # Save the model
-    if hvd.rank() == 0:
-        model_path = os.path.join(args.model_dir, "mnist_cnn.pt")
-        torch.save(model.state_dict(), model_path)
-        print(f"Model saved to {model_path}")
+        if hvd.rank() == 0:
+            print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {100. * test_accuracy:.2f}%\n')
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    main(args)
+    args.cuda = not args.no_cuda and torch.cuda.is_available()
+
+    if args.num_proc:
+        horovod.run(main,
+                    args=(args,),
+                    np=args.num_proc,
+                    hosts=args.hosts,
+                    use_gloo=args.communication == 'gloo',
+                    use_mpi=args.communication == 'mpi')
+    else:
+        main(args)

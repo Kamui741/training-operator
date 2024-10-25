@@ -12,7 +12,8 @@ spec:
         spec:
           containers:
             - name: pytorch
-              image: kubeflow/pytorch-dist-mnist:latest
+              # image: kubeflow/pytorch-dist-mnist:latest
+              image: kmu1/pytorch:22.08-py3
               imagePullPolicy: IfNotPresent   ### 新增
               args: ["--backend", "mpi"]
               # Comment out the below resources to use the CPU.
@@ -35,10 +36,11 @@ spec:
                 requests:
                   cpu: 50m
                   memory: 10Mi
-              command: ['sh', '-c', 'err=1;for i in $(seq 100); do if nslookup master; then err=0 && break; fi; echo waiting for master; sleep 2; done; exit $err']
+              command: ['sh', '-c', 'err=1;for i in $(seq 100); do if nslookup pytorch-dist-mnist-mpi-master-0; then err=0 && break; fi; echo waiting for master; sleep 2; done; exit $err'] #TODO：#master不对
           containers:
             - name: pytorch
-              image: kubeflow/pytorch-dist-mnist:latest
+              # image: kubeflow/pytorch-dist-mnist:latest
+              image: kmu1/pytorch:22.08-py3
               imagePullPolicy: IfNotPresent   ### 新增
               args: ["--backend", "mpi"]
               # Comment out the below resources to use the CPU.

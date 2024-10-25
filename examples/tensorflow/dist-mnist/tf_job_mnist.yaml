@@ -12,7 +12,8 @@ spec:
         spec:
           containers:
             - name: tensorflow
-              image: kubeflow/tf-dist-mnist-test:latest
+              # image: kubeflow/tf-dist-mnist-test:latest
+              image: kmu1/tensorflow:22.08-tf2-py3
               imagePullPolicy: IfNotPresent   ### 新增
     Worker:
       replicas: 4
@@ -21,7 +22,8 @@ spec:
         spec:
           containers:
             - name: tensorflow
-              image: kubeflow/tf-dist-mnist-test:latest
+              # image: kubeflow/tf-dist-mnist-test:latest
+              image: kmu1/tensorflow:22.08-tf2-py3
               imagePullPolicy: IfNotPresent
 
 

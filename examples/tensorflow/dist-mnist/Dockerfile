@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM tensorflow/tensorflow:1.5.0
+# FROM tensorflow/tensorflow:1.5.0
+FROM nvcr.io/nvidia/tensorflow:22.08-tf2-py3
 
-ADD examples/tensorflow/dist-mnist/ /var/tf_dist_mnist
+# ADD examples/tensorflow/dist-mnist/ /var/tf_dist_mnist
+
+
+ADD ./ /var/tf_dist_mnist
 ENTRYPOINT ["python", "/var/tf_dist_mnist/dist_mnist.py"]
