@@ -1,3 +1,11 @@
+'''
+Author: ChZheng
+Date: 2024-08-20 16:47:55
+LastEditTime: 2024-11-01 14:04:59
+LastEditors: ChZheng
+Description:
+FilePath: /training-operator/examples/mpi/tensorflow2_mnist.py
+'''
 import os
 import tensorflow as tf
 import horovod.tensorflow as hvd

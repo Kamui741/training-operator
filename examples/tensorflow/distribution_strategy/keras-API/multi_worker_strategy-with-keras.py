@@ -76,6 +76,8 @@ def main(args):
   strategy = tf.distribute.MultiWorkerMirroredStrategy(
       communication_options=tf.distribute.experimental.CommunicationOptions(implementation=tf.distribute.experimental.CollectiveCommunication.AUTO))
 
+
+
   BATCH_SIZE_PER_REPLICA = 64
   BATCH_SIZE = BATCH_SIZE_PER_REPLICA * strategy.num_replicas_in_sync
 
